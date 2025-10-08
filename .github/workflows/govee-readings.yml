@@ -7,20 +7,25 @@ on:
     # 01:00 UTC  -> 8:00 PM during CDT (summer), 7:00 PM during CST (winter)
     - cron: "0 13 * * *"
     - cron: "0 1 * * *"
-  workflow_dispatch: {}  # allow manual run
+  workflow_dispatch: {}
+
+permissions:
+  contents: write            # needed to push the updated Excel
 
 jobs:
   log-temps:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: PRFM_Scripts  # <-- change if your script lives elsewhere
     env:
       GOVEE_API_KEY: ${{ secrets.GOVEE_API_KEY }}
       GOVEE_TEMP_UNIT: F
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show working directory (debug)
+        run: |
+          pwd
+          ls -la
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -32,13 +37,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests openpyxl
 
-      - name: Run Govee logger
+      - name: Run logger (gated to 08:00/20:00 America/Chicago)
         run: |
-          python govee_to_excel.py
+          python - <<'PY'
+          import datetime as dt
+          from zoneinfo import ZoneInfo
+          now = dt.datetime.now(ZoneInfo("America/Chicago"))
+          if now.strftime("%H:%M") not in {"08:00","20:00"}:
+              raise SystemExit(0)
+          import subprocess, sys
+          # Call your script; adjust the path if it's not at repo root.
+          sys.exit(subprocess.call(["python", "govee_to_excel.py"]))
+          PY
 
-      # optional: commit the updated Excel back to the repo
-      - name: Commit Excel output
-        if: ${{ !cancelled() }}
+      - name: Commit Excel output (if changed)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
