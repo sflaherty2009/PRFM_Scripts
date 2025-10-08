@@ -1,0 +1,47 @@
+name: Govee readings to Excel (8a/8p CT)
+
+on:
+  schedule:
+    # GitHub Actions uses UTC. These fire at:
+    # 13:00 UTC  -> 8:00 AM during CDT (summer), 7:00 AM during CST (winter)
+    # 01:00 UTC  -> 8:00 PM during CDT (summer), 7:00 PM during CST (winter)
+    - cron: "0 13 * * *"
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}  # allow manual run
+
+jobs:
+  log-temps:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PRFM_Scripts  # <-- change if your script lives elsewhere
+    env:
+      GOVEE_API_KEY: ${{ secrets.GOVEE_API_KEY }}
+      GOVEE_TEMP_UNIT: F
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests openpyxl
+
+      - name: Run Govee logger
+        run: |
+          python govee_to_excel.py
+
+      # optional: commit the updated Excel back to the repo
+      - name: Commit Excel output
+        if: ${{ !cancelled() }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add govee_temps.xlsx || true
+          git diff --staged --quiet || git commit -m "Update govee_temps.xlsx"
+          git push
