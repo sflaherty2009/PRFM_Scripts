@@ -25,10 +25,12 @@ def c_to_f(c): return (c * 9/5) + 32
 def f_to_c(f): return (f - 32) * 5/9
 
 def ensure_wb(path):
+    """Create or open workbook and ensure header row exists."""
     try:
         wb = load_workbook(path)
         ws = wb[SHEET_NAME] if SHEET_NAME in wb.sheetnames else wb.create_sheet(SHEET_NAME)
-        if ws.max_row == 1 and ws.cell(1,1).value is None:
+        # If the sheet exists but has no header, add one
+        if ws.max_row == 1 and (ws.cell(1, 1).value is None or ws.cell(1, 1).value == ""):
             ws.append(["timestamp","device_name","temp_f","temp_c"])
     except FileNotFoundError:
         wb = Workbook()
@@ -38,9 +40,14 @@ def ensure_wb(path):
     return wb, ws
 
 def autosize(ws):
-    for col in range(1, ws.max_column + 1):
-        width = max(len(str(c.value)) if c.value is not None else 0 for c in ws.iter_cols(min_col=col, max_col=col, values_only=False)[0])
-        ws.column_dimensions[get_column_letter(col)].width = min(width + 2, 60)
+    """Autosize columns safely without indexing generators."""
+    for col_idx in range(1, ws.max_column + 1):
+        max_len = 0
+        for row_idx in range(1, ws.max_row + 1):
+            val = ws.cell(row=row_idx, column=col_idx).value
+            if val is not None:
+                max_len = max(max_len, len(str(val)))
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 60)
 
 def read_temp(session, sku, device_id):
     r = session.post(
@@ -56,10 +63,10 @@ def read_temp(session, sku, device_id):
         raise RuntimeError("No temperature in response")
     v = float(val)
     if UNIT == "F":
-        temp_f, temp_c = v, round(f_to_c(v), 2)
+        temp_f, temp_c = round(v, 2), round(f_to_c(v), 2)
     else:
-        temp_c, temp_f = v, round(c_to_f(v), 2)
-    return round(temp_f, 2), round(temp_c, 2)
+        temp_c, temp_f = round(v, 2), round(c_to_f(v), 2)
+    return temp_f, temp_c
 
 def main():
     ts = dt.datetime.now(ZoneInfo("America/Chicago")).isoformat(timespec="seconds")
